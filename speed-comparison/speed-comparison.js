@@ -40,7 +40,7 @@ const START_PORT = Number(process.env.START_PORT) || 8000
 // Where does this server live?
 const ADDRESS = process.env.ADDRESS || '0.0.0.0'
 
-const DATA_SIZE = process.env.DATA_SIZE || '0'
+const DATA_SIZE = Number(process.env.DATA_SIZE) || 0
 
 // get a nice specific timestamp
 const _getTime = () => {
