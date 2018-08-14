@@ -116,18 +116,12 @@ const runAsServer = (quicPort, httpPort, wsPort, netPort) => {
     let data
 
     socket.on('data', dat => {
-      // console.log('server received data of length:', dat.toString().length)
       if (data) data = Buffer.concat([data, dat])
       else data = dat
-      // socket.write(dat, () => {
-      //   socket.end()
-      // })
     })
 
     socket.on('end', () => {
-      // console.log('server heard end')
       socket.write(data, () => {
-        // console.log('server finished writing response')
         socket.end()
       })
     })
@@ -142,8 +136,6 @@ const runAsServer = (quicPort, httpPort, wsPort, netPort) => {
 // with the error or resolves with the duration
 const requesters = {
   quic: (port, data) => {
-    console.log('sending quic request')
-
     return new Promise((resolve, reject) => {
 
       const start = _getTime()
@@ -158,8 +150,6 @@ const requesters = {
   },
 
   http: (port, data) => {
-    console.log('sending http request')
-
     return new Promise((resolve, reject) => {
       const start = _getTime()
 
@@ -179,8 +169,6 @@ const requesters = {
   },
 
   ws: (port, data) => {
-    console.log('sending ws request')
-
     return new Promise((resolve, reject) => {
       const start = _getTime()
 
@@ -198,8 +186,6 @@ const requesters = {
   },
 
   net: (port, data) => {
-    console.log('sending net request')
-
     return new Promise((resolve, reject) => {
       const client = new net.Socket()
       const start = _getTime()
@@ -230,8 +216,6 @@ const requesters = {
 }
 
 const runAsClientParallel = (quicPort, httpPort, wsPort, netPort) => {
-  console.log('running parallel')
-
   const data = _createData(DATA_SIZE)
 
   const quicPromise = requesters.quic(quicPort, data)
@@ -243,8 +227,6 @@ const runAsClientParallel = (quicPort, httpPort, wsPort, netPort) => {
 }
 
 const runAsClientSerially = async (numSends, quicPort, httpPort, wsPort, netPort) => {
-  console.log('running serially')
-
   const data = _createData(DATA_SIZE)
 
   const resolvedPromise = new Promise(resolve => resolve(true))
@@ -271,9 +253,6 @@ const runAsClientSerially = async (numSends, quicPort, httpPort, wsPort, netPort
 
   // we don't want to return our dummy promise
   responsePromises.shift()
-
-  console.log('returning num promises:', responsePromises.length)
-  console.log(responsePromises)
 
   return responsePromises
 }
@@ -360,80 +339,50 @@ const _formatTimings = timings => {
   const trimmedWSResponses = _withoutExtremes(sortedWSResponses)
   const trimmedNetResponses = _withoutExtremes(sortedNetResponses)
 
-  const quicMean = _calculateMean(trimmedQuicResponses)
-  const httpMean = _calculateMean(trimmedHttpResponses)
-  const wsMean = _calculateMean(trimmedWSResponses)
-  const netMean = _calculateMean(trimmedNetResponses)
-
-  const quicMedian = _calculateMedian(trimmedQuicResponses)
-  const httpMedian = _calculateMedian(trimmedHttpResponses)
-  const wsMedian = _calculateMedian(trimmedWSResponses)
-  const netMedian = _calculateMedian(trimmedNetResponses)
-
-  const quicHigh = _calculateHigh(trimmedQuicResponses)
-  const httpHigh = _calculateHigh(trimmedHttpResponses)
-  const wsHigh = _calculateHigh(trimmedWSResponses)
-  const netHigh = _calculateHigh(trimmedNetResponses)
-
-  const quicLow = _calculateLow(trimmedQuicResponses)
-  const httpLow = _calculateLow(trimmedHttpResponses)
-  const wsLow = _calculateLow(trimmedWSResponses)
-  const netLow = _calculateLow(trimmedNetResponses)
-
-  const quicStdDev = _calculateStdDev(trimmedQuicResponses)
-  const httpStdDev = _calculateStdDev(trimmedHttpResponses)
-  const wsStdDev = _calculateStdDev(trimmedWSResponses)
-  const netStdDev = _calculateStdDev(trimmedNetResponses)
-
-  const quicHighFive = _getHighFive(sortedQuicResponses)
-  const httpHighFive = _getHighFive(sortedHttpResponses)
-  const wsHighFive = _getHighFive(sortedWSResponses)
-  const netHighFive = _getHighFive(sortedWSResponses)
-
-  const quicLowFive = _getLowFive(sortedQuicResponses)
-  const httpLowFive = _getLowFive(sortedHttpResponses)
-  const wsLowFive = _getLowFive(sortedWSResponses)
-  const netLowFive = _getLowFive(sortedWSResponses)
-
-  // TODO just combine this with the above
-  const ret = {
+  console.log({
     // add run arguments for logging
     NUM_SPINUPS, START_PORT, ADDRESS, DATA_SIZE,
+
     quicResponses: JSON.stringify(trimmedQuicResponses),
     httpResponses: JSON.stringify(trimmedHttpResponses),
     wsResponses: JSON.stringify(trimmedWSResponses),
     netResponses: JSON.stringify(trimmedNetResponses),
-    quicMean,
-    httpMean,
-    wsMean,
-    netMean,
-    quicMedian,
-    httpMedian,
-    wsMedian,
-    netMedian,
-    quicHigh,
-    httpHigh,
-    wsHigh,
-    netHigh,
-    quicLow,
-    httpLow,
-    wsLow,
-    netLow,
-    quicStdDev,
-    httpStdDev,
-    wsStdDev,
-    netStdDev,
-    quicHighFive,
-    httpHighFive,
-    wsHighFive,
-    netHighFive,
-    quicLowFive,
-    httpLowFive,
-    wsLowFive,
-    netLowFive
-  }
 
-  console.log(ret)
+    quicMean: _calculateMean(trimmedQuicResponses),
+    httpMean: _calculateMean(trimmedHttpResponses),
+    wsMean: _calculateMean(trimmedWSResponses),
+    netMean: _calculateMean(trimmedNetResponses),
+
+    quicMedian: _calculateMedian(trimmedQuicResponses),
+    httpMedian: _calculateMedian(trimmedHttpResponses),
+    wsMedian: _calculateMedian(trimmedWSResponses),
+    netMedian: _calculateMedian(trimmedNetResponses),
+
+    quicHigh: _calculateHigh(trimmedQuicResponses),
+    httpHigh: _calculateHigh(trimmedHttpResponses),
+    wsHigh: _calculateHigh(trimmedWSResponses),
+    netHigh: _calculateHigh(trimmedNetResponses),
+
+    quicLow: _calculateLow(trimmedQuicResponses),
+    httpLow: _calculateLow(trimmedHttpResponses),
+    wsLow: _calculateLow(trimmedWSResponses),
+    netLow: _calculateLow(trimmedNetResponses),
+
+    quicStdDev: _calculateStdDev(trimmedQuicResponses),
+    httpStdDev: _calculateStdDev(trimmedHttpResponses),
+    wsStdDev: _calculateStdDev(trimmedWSResponses),
+    netStdDev: _calculateStdDev(trimmedNetResponses),
+
+    quicHighFive: _getHighFive(sortedQuicResponses),
+    httpHighFive: _getHighFive(sortedHttpResponses),
+    wsHighFive: _getHighFive(sortedWSResponses),
+    netHighFive: _getHighFive(sortedWSResponses),
+
+    quicLowFive: _getLowFive(sortedQuicResponses),
+    httpLowFive: _getLowFive(sortedHttpResponses),
+    wsLowFive: _getLowFive(sortedWSResponses),
+    netLowFive: _getLowFive(sortedWSResponses)
+  })
 }
 
 async function main () {
@@ -451,8 +400,6 @@ async function main () {
     // TODO reconsider env var NUM_SPINUPS
     // TODO Add DEBUG flag to log when stuff's going out
     responsePromises = await runAsClientSerially(NUM_SPINUPS, quicPort, httpPort, wsPort, netPort)
-
-    console.log('received response Promises', responsePromises.length)
   } else { // we're doing it in parallel
     for (let p = START_PORT; p < START_PORT + (NUM_SPINUPS * 4); p += 4) {
       const [ quicPort, httpPort, wsPort, netPort ] = [p, p + 1, p + 2, p + 3]
@@ -469,7 +416,6 @@ async function main () {
     }
   }
 
-  // console.log(responsePromises)
   if (IS_CLIENT) Promise.all(responsePromises).then(_formatTimings)
 }
 
