@@ -44,6 +44,8 @@ const DATA_SIZE = Number(process.env.DATA_SIZE) || 0
 
 const PARALLEL = process.env.PARALLEL === 'true'
 
+const DEBUG = process.env.DEBUG === 'true'
+
 const IS_CLIENT = process.argv[2] === 'client'
 
 // get a nice specific timestamp
@@ -132,10 +134,17 @@ const runAsServer = (quicPort, httpPort, wsPort, netPort) => {
   })
 }
 
+// simple logging helper
+const debug = (...info) => {
+  if (DEBUG) console.log(...info)
+}
+
 // namespaced -- make a single request, returned a promise that rejects
 // with the error or resolves with the duration
 const requesters = {
   quic: (port, data) => {
+    debug('sending quic request')
+
     return new Promise((resolve, reject) => {
 
       const start = _getTime()
@@ -150,6 +159,8 @@ const requesters = {
   },
 
   http: (port, data) => {
+    debug('sending http request')
+
     return new Promise((resolve, reject) => {
       const start = _getTime()
 
@@ -169,6 +180,8 @@ const requesters = {
   },
 
   ws: (port, data) => {
+    debug('sending ws request')
+
     return new Promise((resolve, reject) => {
       const start = _getTime()
 
@@ -186,6 +199,8 @@ const requesters = {
   },
 
   net: (port, data) => {
+    debug('sending net request')
+
     return new Promise((resolve, reject) => {
       const client = new net.Socket()
       const start = _getTime()
@@ -398,7 +413,6 @@ async function main () {
     }
 
     // TODO reconsider env var NUM_SPINUPS
-    // TODO Add DEBUG flag to log when stuff's going out
     responsePromises = await runAsClientSerially(NUM_SPINUPS, quicPort, httpPort, wsPort, netPort)
   } else { // we're doing it in parallel
     for (let p = START_PORT; p < START_PORT + (NUM_SPINUPS * 4); p += 4) {
