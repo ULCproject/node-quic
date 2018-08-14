@@ -246,12 +246,12 @@ const runAsClientSerially = async (numSends, quicPort, httpPort, wsPort, netPort
 
   const resolvedPromise = new Promise(resolve => resolve(true))
 
-  let responsePromises = [[resolvedPromise]]
+  let responsePromises = [resolvedPromise]
 
   for (let i = 0; i < numSends; i++) {
     let roundPromises = []
 
-    await last(last(responsePromises)) // the last promise of the previous round
+    await last(responsePromises) // wait for the previous round to wrap up
     roundPromises.push(requesters.quic(quicPort, data))
 
     await last(roundPromises)
