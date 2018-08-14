@@ -31,7 +31,7 @@ import path from 'path'
 import WebSocket from 'ws'
 import net from 'net'
 
-// How many servers / clients do we want to spin up?
+// How many servers / clients do we want to sp in up?
 const NUM_SPINUPS = Number(process.env.NUM_SPINUPS) || 1
 
 // We will go NUM_SPINUPS * 2 increments above this.
@@ -41,6 +41,10 @@ const START_PORT = Number(process.env.START_PORT) || 8000
 const ADDRESS = process.env.ADDRESS || '0.0.0.0'
 
 const DATA_SIZE = Number(process.env.DATA_SIZE) || 0
+
+const PARALLEL = process.env.PARALLEL === 'true'
+
+const IS_CLIENT = process.argv[2] === 'client'
 
 // get a nice specific timestamp
 const _getTime = () => {
@@ -134,82 +138,144 @@ const runAsServer = (quicPort, httpPort, wsPort, netPort) => {
   })
 }
 
-const runAsClient = (quicPort, httpPort, wsPort, netPort) => {
-  const data = _createData(DATA_SIZE)
+// namespaced -- make a single request, returned a promise that rejects
+// with the error or resolves with the duration
+const requesters = {
+  quic: (port, data) => {
+    console.log('sending quic request')
 
-  const quicPromise = new Promise((resolve, reject) => {
+    return new Promise((resolve, reject) => {
 
-    const start = _getTime()
+      const start = _getTime()
 
-    quic.send(quicPort, ADDRESS, { data })
-      .onError(reject)
-      .onData(resp => {
-        if (resp.data !== data) reject('QUIC received wrong response')
+      quic.send(port, ADDRESS, { data })
+        .onError(reject)
+        .onData(resp => {
+          if (resp.data !== data) reject('QUIC received wrong response')
+          resolve(_getTime() - start)
+        })
+    })
+  },
+
+  http: (port, data) => {
+    console.log('sending http request')
+
+    return new Promise((resolve, reject) => {
+      const start = _getTime()
+
+      request({
+        method: 'POST',
+        uri: `http://${ADDRESS}:${port}/test`,
+        body: data,
+        json: true
+      }, (err, resp) => {
+        if (err) return reject(err)
+        resp = resp.body
+        if (resp !== data) reject('HTTP received wrong response')
         resolve(_getTime() - start)
       })
-  })
-
-  const httpPromise = new Promise((resolve, reject) => {
-    const start = _getTime()
-
-    request({
-      method: 'POST',
-      uri: `http://${ADDRESS}:${httpPort}/test`,
-      body: data,
-      json: true
-    }, (err, resp) => {
-      if (err) return reject(err)
-      resp = resp.body
-      if (resp !== data) reject('HTTP received wrong response')
-      resolve(_getTime() - start)
-    })
-  })
-
-  const wsPromise = new Promise((resolve, reject) => {
-    const start = _getTime()
-
-    const ws = new WebSocket(`ws://${ADDRESS}:${wsPort}`)
-
-    ws.on('open', () => ws.send(data))
-    ws.on('error', reject)
-    ws.on('message', message => {
-      if (message !== data) reject('WS received wrong response')
-      resolve(_getTime() - start)
-      ws.close()
-    })
-  })
-
-  const netPromise = new Promise((resolve, reject) => {
-    const client = new net.Socket()
-
-    const start = _getTime()
-
-    client.on('error', reject)
-
-    client.on('close', () => client.destroy())
-
-    let buffer
-
-    client.on('data', dat => {
-      if (buffer) buffer = Buffer.concat([buffer, dat])
-      else buffer = dat
     })
 
-    client.on('end', () => {
-      if (buffer.toString() !== data) return reject('net received wrong response')
-      resolve(_getTime() - start)
-      client.destroy()
-    })
+  },
 
-    client.connect(netPort, ADDRESS, () => {
-      client.write(data, () => {
-        // console.log('client has finished write')
-        client.end()
+  ws: (port, data) => {
+    console.log('sending ws request')
+
+    return new Promise((resolve, reject) => {
+      const start = _getTime()
+
+      const ws = new WebSocket(`ws://${ADDRESS}:${port}`)
+
+      ws.on('open', () => ws.send(data))
+      ws.on('error', reject)
+      ws.on('message', message => {
+        if (message !== data) reject('WS received wrong response')
+        resolve(_getTime() - start)
+        ws.close()
       })
     })
-  })
+
+  },
+
+  net: (port, data) => {
+    console.log('sending net request')
+
+    return new Promise((resolve, reject) => {
+      const client = new net.Socket()
+      const start = _getTime()
+
+      client.on('error', reject)
+      client.on('close', () => client.destroy())
+
+      let buffer
+
+      client.on('data', dat => {
+        if (buffer) buffer = Buffer.concat([buffer, dat])
+        else buffer = dat
+      })
+
+      client.on('end', () => {
+        if (buffer.toString() !== data) return reject('net received wrong response')
+        resolve(_getTime() - start)
+        client.destroy()
+      })
+
+      client.connect(port, ADDRESS, () => {
+        client.write(data, () => {
+          client.end()
+        })
+      })
+    })
+  }
+}
+
+const runAsClientParallel = (quicPort, httpPort, wsPort, netPort) => {
+  console.log('running parallel')
+
+  const data = _createData(DATA_SIZE)
+
+  const quicPromise = requesters.quic(quicPort, data)
+  const httpPromise = requesters.http(httpPort, data)
+  const wsPromise   = requesters.ws(wsPort, data)
+  const netPromise  = requesters.net(netPort, data)
 
   return Promise.all([quicPromise, httpPromise, wsPromise, netPromise])
+}
+
+const runAsClientSerially = async (numSends, quicPort, httpPort, wsPort, netPort) => {
+  console.log('running serially')
+
+  const data = _createData(DATA_SIZE)
+
+  const resolvedPromise = new Promise(resolve => resolve(true))
+
+  let responsePromises = [[resolvedPromise]]
+
+  for (let i = 0; i < numSends; i++) {
+    let roundPromises = []
+
+    await last(last(responsePromises)) // the last promise of the previous round
+    roundPromises.push(requesters.quic(quicPort, data))
+
+    await last(roundPromises)
+    roundPromises.push(requesters.http(httpPort, data))
+
+    await last(roundPromises)
+    roundPromises.push(requesters.ws(wsPort, data))
+
+    await last(roundPromises)
+    roundPromises.push(requesters.net(netPort, data))
+
+    responsePromises.push(Promise.all(roundPromises))
+  }
+
+  // we don't want to return our dummy promise
+  responsePromises.shift()
+
+  console.log('returning num promises:', responsePromises.length)
+  console.log(responsePromises)
+
+  return responsePromises
 }
 
 const _calculateMean = (nums) => {
@@ -265,6 +331,10 @@ const _sort = (nums) => {
   })
 }
 
+const last = (array) => {
+  return array[array.length - 1]
+}
+
 async function _sleep (duration) {
   return new Promise(resolve => {
     setTimeout(resolve, duration)
@@ -272,10 +342,13 @@ async function _sleep (duration) {
 }
 
 const _formatTimings = timings => {
-  const quicResponses = timings.map(timingPair => Number(timingPair[0]))
-  const httpResponses = timings.map(timingPair => Number(timingPair[1]))
-  const wsResponses = timings.map(timingPair => Number(timingPair[2]))
-  const netResponses = timings.map(timingPair => Number(timingPair[3]))
+  // timings comes as a list of N-tuples where N is the number
+  // of different protocols we're trying
+
+  const quicResponses = timings.map(timingTuple => Number(timingTuple[0]))
+  const httpResponses = timings.map(timingTuple => Number(timingTuple[1]))
+  const wsResponses = timings.map(timingTuple => Number(timingTuple[2]))
+  const netResponses = timings.map(timingTuple => Number(timingTuple[3]))
 
   const sortedQuicResponses = _sort(quicResponses)
   const sortedHttpResponses = _sort(httpResponses)
@@ -322,6 +395,7 @@ const _formatTimings = timings => {
   const wsLowFive = _getLowFive(sortedWSResponses)
   const netLowFive = _getLowFive(sortedWSResponses)
 
+  // TODO just combine this with the above
   const ret = {
     // add run arguments for logging
     NUM_SPINUPS, START_PORT, ADDRESS, DATA_SIZE,
@@ -363,20 +437,40 @@ const _formatTimings = timings => {
 }
 
 async function main () {
-  const isClient = process.argv[2] === 'client'
   let responsePromises = []
 
-  for (let p = START_PORT; p < START_PORT + (NUM_SPINUPS * 4); p += 4) {
+  if (!PARALLEL) { // we're doing it serially
+    const p = START_PORT
     const [ quicPort, httpPort, wsPort, netPort ] = [p, p + 1, p + 2, p + 3]
 
-    if (isClient) {
-      responsePromises.push(runAsClient(quicPort, httpPort, wsPort, netPort))
+    // we're in server mode
+    if (!IS_CLIENT) {
+      return runAsServer(quicPort, httpPort, wsPort, netPort)
+    }
+
+    // TODO reconsider env var NUM_SPINUPS
+    // TODO Add DEBUG flag to log when stuff's going out
+    responsePromises = await runAsClientSerially(NUM_SPINUPS, quicPort, httpPort, wsPort, netPort)
+
+    console.log('received response Promises', responsePromises.length)
+  } else { // we're doing it in parallel
+    for (let p = START_PORT; p < START_PORT + (NUM_SPINUPS * 4); p += 4) {
+      const [ quicPort, httpPort, wsPort, netPort ] = [p, p + 1, p + 2, p + 3]
+
+      // we're in server mode
+      if (!IS_CLIENT) {
+        runAsServer(quicPort, httpPort, wsPort, netPort)
+        continue
+      }
+
+      // we're client
+      responsePromises.push(runAsClientParallel(quicPort, httpPort, wsPort, netPort))
       await _sleep(300) // without this, we start seeing QUIC_NETWORK_IDLE_TIMEOUT errors on the server
     }
-    else runAsServer(quicPort, httpPort, wsPort, netPort)
   }
 
-  if (isClient) Promise.all(responsePromises).then(_formatTimings)
+  // console.log(responsePromises)
+  if (IS_CLIENT) Promise.all(responsePromises).then(_formatTimings)
 }
 
 main()
