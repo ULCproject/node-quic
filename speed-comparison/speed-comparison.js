@@ -48,6 +48,8 @@ const DEBUG = process.env.DEBUG === 'true'
 
 const IS_CLIENT = process.argv[2] === 'client'
 
+const OUTFILE = process.env.OUTFILE || false
+
 // get a nice specific timestamp
 const _getTime = () => {
   // hrtime would be nice to use, but for some reason it doesn't seem very accurate.
@@ -354,7 +356,7 @@ const _formatTimings = timings => {
   const trimmedWSResponses = _withoutExtremes(sortedWSResponses)
   const trimmedNetResponses = _withoutExtremes(sortedNetResponses)
 
-  console.log({
+  const ret = {
     // add run arguments for logging
     NUM_SPINUPS, START_PORT, ADDRESS, DATA_SIZE,
 
@@ -397,7 +399,13 @@ const _formatTimings = timings => {
     httpLowFive: _getLowFive(sortedHttpResponses),
     wsLowFive: _getLowFive(sortedWSResponses),
     netLowFive: _getLowFive(sortedWSResponses)
-  })
+  }
+
+  if (OUTFILE) {
+    fs.writeFileSync(OUTFILE, JSON.stringify(ret), { encoding: 'utf8' })
+  } else {
+    console.log(ret)
+  }
 }
 
 async function main () {
