@@ -402,7 +402,7 @@ const _formatTimings = timings => {
   }
 
   if (OUTFILE) {
-    fs.writeFileSync(OUTFILE, JSON.stringify(ret), { encoding: 'utf8' })
+    fs.writeFileSync(OUTFILE, JSON.stringify(ret), { encoding: 'utf8', flag: 'a' })
   } else {
     console.log(ret)
   }
